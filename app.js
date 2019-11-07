@@ -6,6 +6,10 @@ var logger = require('morgan');
 
 
 const fs = require('fs');
+var dir = __dirname + '/docs';
+if (!path.existsSync(dir)) {
+    fs.mkdirSync(dir);
+}
 
 function getDocs() {
 	var docs_arr = [];
