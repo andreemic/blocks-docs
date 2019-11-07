@@ -32,7 +32,7 @@ a {
 	transition: opacity 0.3s;
 	position:fixed;
 	bottom: 20px;
-	right: 30px;
+	left: 30px;
 	text-align:center;
 }
 #status.visible {
