@@ -7,7 +7,7 @@ var logger = require('morgan');
 
 const fs = require('fs');
 var dir = __dirname + '/docs';
-if (!path.existsSync(dir)) {
+if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir);
 }
 
