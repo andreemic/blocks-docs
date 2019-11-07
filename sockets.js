@@ -11,8 +11,20 @@ function startPool(starterSocket) {
 	});
 }
 const fs = require('fs');
+const path = require('path');
+function clearDocs() {
+	fs.readdir('./docs', (err, files) => {
+	  if (err) throw err;
+
+	  for (const file of files) {
+	    fs.unlink(path.join('./docs', file), err => {
+	      if (err) throw err;
+	    });
+	  }
+	});
+}
 module.exports = function(io) {
-    io.on('connection', function(socket) {
+	io.on('connection', function(socket) {
     	socket.join('nodes');
 
 	let nodeId = socket.id;
@@ -43,6 +55,15 @@ module.exports = function(io) {
 	nodes.push(socket); // save socket so it can be pooled later
     	socket.on('pool_req', function() {
 		startPool(socket);
+	});
+
+
+	socket.on('disconnect', function() {
+		nodes.splice(nodes.indexOf(socket), 1);
+		if (nodes.length == 0) {
+			console.log("No one connected :( clearing docs");
+			clearDocs();
+		}
 	});
     })
 };

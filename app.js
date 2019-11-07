@@ -2,44 +2,44 @@ var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+	var logger = require('morgan');
 
 
-const fs = require('fs');
-var dir = __dirname + '/docs';
-if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-}
+	const fs = require('fs');
+	var dir = __dirname + '/docs';
+	if (!fs.existsSync(dir)) {
+	    fs.mkdirSync(dir);
+	}
 
-function getDocs() {
-	var docs_arr = [];
+	function getDocs() {
+		var docs_arr = [];
 
-	files = fs.readdirSync('./docs/');
-	files.forEach(fname => {
-		let txt = fs.readFileSync('./docs/' + fname, 'utf-8'); 
-		let doc = {};
-		doc.title = fname;
-		doc.text = txt;
+		files = fs.readdirSync('./docs/');
+		files.forEach(fname => {
+			let txt = fs.readFileSync('./docs/' + fname, 'utf-8'); 
+			let doc = {};
+			doc.title = fname;
+			doc.text = txt;
 
-		docs_arr.push(doc);
-	});
-	return docs_arr;
-}
+			docs_arr.push(doc);
+		});
+		return docs_arr;
+	}
 
-function isString(str) {
-	return typeof(str) === 'string';
-}
+	function isString(str) {
+		return typeof(str) === 'string';
+	}
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+	var indexRouter = require('./routes/index');
+	var usersRouter = require('./routes/users');
 
-var app = express();
+	var app = express();
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
+	// view engine setup
+	app.set('views', path.join(__dirname, 'views'));
+	app.set('view engine', 'jade');
 
-app.use(logger('dev'));
+	app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
