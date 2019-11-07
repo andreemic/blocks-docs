@@ -1,5 +1,15 @@
 var nodes = [];
 
+
+// startet Pool und schickt 'pool_res_ready' events an den initiator
+function startPool(starterSocket) {
+	nodes.forEach(function(node) {
+		node.emit('pool', starterSocket.id, function(nodeChain) {
+			//gets called when node sends back his chain
+			starterSocket.emit('pool_res_ready', nodeChain);
+		});
+	});
+}
 const fs = require('fs');
 module.exports = function(io) {
     io.on('connection', function(socket) {
@@ -8,13 +18,9 @@ module.exports = function(io) {
 	let nodeId = socket.id;
 	socket.emit('give_id', nodeId);
 	
+	startPool(socket);
+
 	// pool all nodes and wait for answers
-	nodes.forEach(function(node) {
-		node.emit('pool', nodeId, function(nodeChain) {
-			//gets called when node sends back his chain
-			socket.emit('pool_res_ready', nodeChain);
-		});
-	});
 	socket.on("add_doc", function(file, cb) {
 		//save document handler
 		let title = file.title;
@@ -35,6 +41,9 @@ module.exports = function(io) {
 	});
 	
 	nodes.push(socket); // save socket so it can be pooled later
+    	socket.on('pool_req', function() {
+		startPool(socket);
+	});
     })
 };
 

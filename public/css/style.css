@@ -9,10 +9,9 @@ body {
 }
 /* Colors:
  * #FFFFF - white (fallback)
- * #B9CDDA - aqua (passive)
- * #283C1C - dgreen (accent1)
- * #507739 - bgreen (accent2)
- * #C1ABA6 - pink
+ * #B9CDDA - ltblue (passive)
+ * #008a7f - aqua (accent1)
+ * #FFC9C9 - red (failure)
  */
 a {
   color: #00B7FF;
@@ -40,9 +39,12 @@ a {
 }
 #docs_con {
 	display:flex;
+	overflow-x: auto;
+	height: 250px;
 }
 .doc-con {
     width: 200px;
+    min-width:200px;
     min-height: 200px;
     padding: 5px;
     font-family: 'Source Code Pro', monospace;
@@ -65,6 +67,7 @@ a {
     margin: 0px 0px 0px 10px;
     word-break: break-word;
     white-space: normal;
+    overflow-y: auto;
 }
 
 .doc-con span {
@@ -74,12 +77,19 @@ a {
     padding: 5px 10px;
     font-size: 12px;
     border-top: solid 1px #6f6f6f;
-    color: black;
+    color: #008a7f;
     border-radius: 0px 0px 5px 5px;
     width: 100%;
     cursor: pointer;
+    text-decoration: underline;
     box-sizing: border-box;
     background: #d4e1e8;
+}
+.doc-con.forged span {
+	color: red;
+	background: #fd9999;
+	cursor: default;
+	text-decoration: none;
 }
 #blocks_con {
 	display:flex;
@@ -133,6 +143,7 @@ a {
 }
 .block li span { 
 	font-size:13px;
+
 }
 .block .creator {
     position: absolute;
@@ -142,5 +153,5 @@ a {
     font-size: 10px;
 }
 .block .creator span {
-	color: #008a7f;
+	font-weight:bold;
 }

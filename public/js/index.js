@@ -30,7 +30,10 @@ $(document).ready(function(){
 	
 	var socket = io();
 
-	let pool_results = []; //array holding Blockchains from peers
+	let pool_results = [];  // array holding Chain Candidates from other nodes 
+				// nodeid - str, chain - Blockchain, lastBlockHash - str, votes - int
+	let num_discrete_res = 0; // holds number of discrete submissions from other nodes for display purposes
+	
 	socket.on('give_id', function(id) {
 		myid = id;
 		$('#my_id').text(`Deine Id: ${myid}`);
@@ -39,13 +42,15 @@ $(document).ready(function(){
 		showChain(localChain);
 		checkFiles();
 		
-		console.log("Warte auf antworten von anderen Nodes...");
 		poolChain(); 
 	});
 
-	function showStatus(msg) {
+	function showStatus(msg, ms) {
 		$('#status').text(msg);
 		$('#status').addClass('visible');
+		if (ms) {
+			setTimeout(function() { hideStatus();}, ms);
+		}
 	}
 	function hideStatus() {
 		$('#status').removeClass('visible');
@@ -57,22 +62,29 @@ $(document).ready(function(){
 			hideStatus();
 			console.log("Vergleiche die Chains von anderen Nodes...");
 			//after 3 sec of receiving pool results from nodes set Timeout and decide for a chain
-			if (pool_results.length > 0) {		
-				for (let i = 0; i < pool_results.length; i++) {
-					let nodeChain = new Blockchain();
-					nodeChain.fillChainFromArray(pool_results[i].chain);
-					if ((nodeChain.chain.length > localChain.chain.length && 
-						nodeChain.checkValid(i)) || (localChain.chain.length === 1)) { // wenn die fremde Chain laenger als meine und legitim oder meine nur 1 block lang ist 
-        					localChain = nodeChain; //Uebernehme die Chain
-						showChain(localChain);
-						checkFiles();
-					} 
+			if (pool_results.length > 0) {
+				// Die Chain mit den meisten votes zaehlen
+				let winningCandidate = pool_results[0];
+				for (let i = 1; i < pool_results.length; i++) {
+					if (pool_results[i].votes > winningCandidate.votes) {
+						winningCandidate = pool_results[i];
+					}
 				}
-				console.log("Pooling Phase zu ende, habe eine Chain festlegen können.");
+				
+				let winningChain = winningCandidate.chain;
+
+				//Testing: Konditionslos die meist gevotet chain waehlen
+				//if ((winningChain.chain.length > localChain.chain.length) || (localChain.chain.length === 1)) { // wenn die fremde Chain laenger als meine oder meine nur 1 block lang ist 
+					localChain = winningChain; //Uebernehme die Chain
+					showChain(localChain);
+					checkFiles();
+				//} 
+				showStatus(`Pooling Phase zu ende, habe eine Chain festlegen können. (von ${winningCandidate.nodeid})`, 5000);
 				pool_results = [];
 			} else {
-				console.log("Pooling Phase zu ende, habe keine Nodes zum austauschen gefunden. Bleibe bei meiner Chain\n\n");
+				showStatus("Pooling Phase zu ende, habe keine Nodes zum austauschen gefunden. Bleibe bei meiner Chain\n\n", 5000);
 			}
+			num_discrete_res = 0;
 			clearInterval(timeout_interval);
 		}, 3000); 	
 	}
@@ -82,17 +94,43 @@ $(document).ready(function(){
 			localChain.addBlockFromDoc(doc);
 			showChain(localChain);
 			cb(packageChain(localChain, myid));
-		
+			
+			socket.emit('pool');
 			poolChain();
 		}
 		showFile(doc.file);
 		checkFiles();
 	});
-
+	
 	socket.on('pool_res_ready', function(res) {
-		//if node is alone, this is not called and he keeps his genesis block
-		console.log(res.nodeid + " hat seine Chain gesendet.");
-		pool_results.push(res);
+		// Akzeptiert antworten von anderen Nodes (Antwort in res argi)
+		// Ihre Chains werden in pool_results gespeichert und ausgewertet in pool
+		num_discrete_res++;
+		showStatus(`Frage andere Nodes nach ihren Chains... (${num_discrete_res} Chains bekommen)`);
+		res.votes = 1;
+		res.lastBlockHash = res.chain[res.chain.length-1].hash;
+		
+		// die Fremde Chain zur Instanz der Klasse Blockchain parsen
+		let parsedChain = new Blockchain();
+		parsedChain.fillChainFromArray(res.chain);
+		res.chain = parsedChain;
+
+		if (!res.chain.checkValid()) {
+			return; // malicious Chain
+		}
+
+		let chainIdx = -1; // index von neuen chain in pool_results (-1 falls noch keiner die geschickt hat)
+		for (let i = 0; i < pool_results.length; i++) {
+			if (pool_results[i].lastBlockHash === res.lastBlockHash) {
+				chainIdx = i;
+			}
+		}
+
+		if (chainIdx === -1) {
+			pool_results.push(res);
+		} else {
+			pool_results[chainIdx].votes++;
+		}
 	});
 	socket.on('pool', function(pooling_node_id, cb) {
 		cb(packageChain(localChain, myid));
@@ -163,8 +201,8 @@ class Blockchain{
 
     addBlock(newBlock){
         newBlock.prevHash = this.latestBlock().hash;
-        newBlock.hash = newBlock.calculateHash();
         newBlock.index = this.chain.length;
+        newBlock.hash = newBlock.calculateHash();
 	this.chain.push(newBlock);
     }
 
@@ -244,7 +282,7 @@ function isFileNew(file) {
 	return true;
 }
 function fileCardId(file) {
-	return '#' + file.title.replace('.', '\\.');
+	return '#' + file.title.replace('.', '\\.').replace(' ', '\\ ');
 }
 
 //returns hash of File (shortened to 8 chars)
