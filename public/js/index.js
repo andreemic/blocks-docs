@@ -19,9 +19,9 @@ $(document).ready(function(){
 					// falls die Datei neu ist, sich einen Block zufügen
 					localChain.addBlockFromDoc({file:file, nodeid:myid});
 					showChain(localChain);
+					poolChain();
 				}	
 				showFile(file);
-				poolChain();
 			});
 			$('#title_input').val('');
 			$('#doc_input').val('');
@@ -95,7 +95,7 @@ $(document).ready(function(){
 			showChain(localChain);
 			cb(packageChain(localChain, myid));
 			
-			socket.emit('pool');
+			socket.emit('pool_req');
 			poolChain();
 		}
 		showFile(doc.file);
