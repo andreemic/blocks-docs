@@ -1,13 +1,30 @@
 var nodes = [];
 
+function someNodeInManual() {
+	for (let i = 0; i < nodes.length; i++) {
+		if (nodes[i].in_manual) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// sends result back to asking client
+function sendResult(starterSocket, chain, some_node_in_manual) {	
+	//gets called when node sends back his chain
+	let response = {node_chain: chain, someone_in_manual: some_node_in_manual};
+	starterSocket.emit('pool_res_ready', response);
+}
 
 // startet Pool und schickt 'pool_res_ready' events an den initiator
 function startPool(starterSocket) {
+	let some_node_in_manual = someNodeInManual();
 	nodes.forEach(function(node) {
-		node.emit('pool', starterSocket.id, function(nodeChain) {
-			//gets called when node sends back his chain
-			starterSocket.emit('pool_res_ready', nodeChain);
-		});
+		if (starterSocket != node) {
+			node.emit('pool', starterSocket.id, function(nodeChain) {
+				sendResult(starterSocket, nodeChain, some_node_in_manual);
+			});
+		}
 	});
 }
 const fs = require('fs');
@@ -25,12 +42,11 @@ function clearDocs() {
 }
 module.exports = function(io) {
 	io.on('connection', function(socket) {
-    	socket.join('nodes');
 
 	let nodeId = socket.id;
 	socket.emit('give_id', nodeId);
+	socket.in_manual = false;
 	
-	startPool(socket);
 
 	// pool all nodes and wait for answers
 	socket.on("add_doc", function(file, cb) {
@@ -38,14 +54,15 @@ module.exports = function(io) {
 		let title = file.title;
 		let text = file.text;
 
+		let some_node_in_manual = someNodeInManual();
+		
 		let cb_ext = function(file, isEdit) {
 			cb(file);
 			// send new doc to all nodes and wait for their chains
 			
 			nodes.forEach(function(node) {
 				node.emit('doc_added', {nodeid: nodeId, file: file}, function(nodeChain) {
-					//gets called when node sends back his chain
-					socket.emit('pool_res_ready', nodeChain);
+				sendResult(socket, nodeChain, some_node_in_manual);
 				});
 			});
 		};
@@ -53,10 +70,16 @@ module.exports = function(io) {
 	});
 	
 	nodes.push(socket); // save socket so it can be pooled later
-    	socket.on('pool_req', function() {
+    	socket.on('pool_req', function(data, cb) {
+		if (cb) {
+			cb(true);
+		}
 		startPool(socket);
 	});
-
+	
+	socket.on('client_manual_mode', function(in_manual) {
+		socket.in_manual = in_manual;
+	});
 
 	socket.on('disconnect', function() {
 		nodes.splice(nodes.indexOf(socket), 1);

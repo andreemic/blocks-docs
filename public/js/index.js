@@ -1,92 +1,186 @@
 var docs = [];
 let localChain;
 let myid;
+
+const SEND_CHAIN = 0;
+const PICK_CHAIN = 1;
 $(document).ready(function(){
-
-	 $.get("/get_docs", function(data, status){
-		 data.files.forEach(showFile); 
-	 });
-
-	$("#send_button").click(function(){
-		var title = $.trim($("#title_input").val());
-		var text = $.trim($("#doc_input").val());
-		if (title != "" && text != "") {
-			let file = {};
-			file.title = title;
-			file.text = text;
-			socket.emit('add_doc', file, function(file) {
-				if (isFileNew(file)) {
-					// falls die Datei neu ist, sich einen Block zufügen
-					localChain.addBlockFromDoc({file:file, nodeid:myid});
-					showChain(localChain);
-					poolChain();
-				}	
-				showFile(file);
-			});
-			$('#title_input').val('');
-			$('#doc_input').val('');
-		}
-	});
+		let manual_box = $('#manual_cbox');
+		let manual_popup_con = $('#manual_popup_con');
+		let manual_popup = $('#manual_popup');
 	
-	var socket = io();
+		let someone_in_manual;
 
-	let pool_results = [];  // array holding Chain Candidates from other nodes 
-				// nodeid - str, chain - Blockchain, lastBlockHash - str, votes - int
-	let num_discrete_res = 0; // holds number of discrete submissions from other nodes for display purposes
-	
-	socket.on('give_id', function(id) {
-		myid = id;
-		$('#my_id').text(`Deine Id: ${myid}`);
-		localChain = new Blockchain(myid);
-    		
-		showChain(localChain);
-		checkFiles();
-		
-		poolChain(); 
-	});
+		// report to server if someone enters manual mode
+		manual_box.change(function() {
+			socket.emit('client_manual_mode', this.checked);
+		});
 
-	function showStatus(msg, ms) {
-		$('#status').text(msg);
-		$('#status').addClass('visible');
-		if (ms) {
-			setTimeout(function() { hideStatus();}, ms);
-		}
-	}
-	function hideStatus() {
-		$('#status').removeClass('visible');
-	}
-	// waits 3 secs and compares chains from pool_results to choose a new chain
-	function poolChain() {
-		showStatus("Frage andere Nodes nach ihren Chains...");
-		let timeout_interval = setInterval(function() {
-			hideStatus();
-			console.log("Vergleiche die Chains von anderen Nodes...");
-			//after 3 sec of receiving pool results from nodes set Timeout and decide for a chain
-			if (pool_results.length > 0) {
-				// Die Chain mit den meisten votes zaehlen
-				let winningCandidate = pool_results[0];
-				for (let i = 1; i < pool_results.length; i++) {
-					if (pool_results[i].votes > winningCandidate.votes) {
-						winningCandidate = pool_results[i];
-					}
+		$('#pool_btn').click(function() {
+			socket.emit('pool_req');
+			poolChain();
+		});
+		$.get("/get_docs", function(data, status){
+			data.files.forEach(showFile); 
+		});
+
+		$("#send_button").click(function(){
+			var title = $.trim($("#title_input").val());
+			var text = $.trim($("#doc_input").val());
+			if (title != "" && text != "") {
+				let file = {};
+				file.title = title;
+				file.text = text;
+				socket.emit('add_doc', file, function(file) {
+					if (isFileNew(file)) {
+							// falls die Datei neu ist, sich einen Block zufügen
+							localChain.addBlockFromDoc({file:file, nodeid:myid});
+							showChain(localChain);
+							poolChain();
+						}	
+						showFile(file);
+					});
+					$('#title_input').val('');
+					$('#doc_input').val('');
 				}
-				
-				let winningChain = winningCandidate.chain;
+			});
+			
+			var socket = io();
 
-				//Testing: Konditionslos die meist gevotet chain waehlen
-				//if ((winningChain.chain.length > localChain.chain.length) || (localChain.chain.length === 1)) { // wenn die fremde Chain laenger als meine oder meine nur 1 block lang ist 
-					localChain = winningChain; //Uebernehme die Chain
+			let pool_results = [];  // array holding Chain Candidates from other nodes 
+						// nodeid - str, chain - Blockchain, lastBlockHash - str, votes - int
+			let num_discrete_res = 0; // holds number of discrete submissions from other nodes for display purposes
+			
+		socket.on('give_id', function(id) {
+			myid = id;
+			$('#my_id').text(`Deine Id: ${myid}`);
+			localChain = new Blockchain(myid);
+		
+			showChain(localChain);
+			checkFiles();
+			
+			socket.emit('pool_req', null, function(pool_started) {
+				if (pool_started) {
+					poolChain();
+				} else {
+					throw "server side pooling error";
+				}
+			});
+		});
+
+		function showStatus(msg, ms) {
+			$('#status').text(msg);
+			$('#status').addClass('visible');
+			if (ms) {
+				setTimeout(function() { hideStatus();}, ms);
+			}
+		}
+		function hideStatus() {
+			$('#status').removeClass('visible');
+		}
+		
+
+		// res_list - list of candidates with chains and the quantity of submissions for each (used with interaction type PICK_CHAIN)
+		// asking_node_id - id of node asking for your chain (used with interaction type SEND_CHAIN)
+		// interaction_type - 	SEND_CHAIN: function returns chain to send to a different node
+		// 			PICK_CHAIN: function returns one of the chains in res_list 
+		async function manualInteraction(res_list, asking_node_id, interaction_type){
+			let c;
+			
+			// To-Do: 
+			//  (*) make wrapper function to not have multiple 'close and empty pop up' duplicates for every onClick
+			//  ( ) make timeout on asking node wait for answer from other nodes so there's no hassle in manual mode on SEND_CHAIN
+			//  ( ) highlight algo-picked chain
+			let resolve_with = function(res, val) {
+				manual_popup_con.removeClass('visible');
+				manual_popup.empty();
+				res(val);
+			}
+				
+
+			var popupClosed = new Promise(function(resolve, reject) {
+				//on close popup resolve(c);
+				if (interaction_type === PICK_CHAIN) {
+					// create UI element for every chain
+					res_list.forEach(function(candidate) {
+						let ui_el = $('<div></div>').html(`<span class='votes'><b>Votes: </b>${candidate.votes}</span>
+											<span class='creator'><b>Creator: </b>${candidate.nodeid}`);
+						ui_el.attr('chain_id', candidate.lastBlockHash);
+						ui_el.addClass('chain_el');
+						let chain_con = $('<div></div>');
+						chain_con.addClass('chain-con');
+						let chain_l = candidate.chain.chain.length;
+						if (chain_l > 1) {
+							chain_con.append($('<p class="three-dots">...</p>'));
+							chain_con.append(candidate.chain.chain[chain_l - 2].asHTML());
+						}
+						chain_con.append(candidate.chain.chain[chain_l - 1].asHTML());
+						
+						ui_el.append(chain_con);
+
+						ui_el.click(function () {
+							resolve_with(resolve, candidate);
+						}); // resolve with chosen candidate
+						manual_popup.append(ui_el);
+					});
+					manual_popup.append($('<div class="chain_el">Keep own Chain</div>').click(function() { 
+						resolve_with(resolve, null);
+					}));
+				} else if (interaction_type === SEND_CHAIN) {
+					manual_popup.append($('<div class="chain_el">Send own chain</div>').click(function () {
+						resolve_with(resolve, null);
+					}));
+					manual_popup.append($('<div class="chain_el">Send chain w/out last block</div>').click(function() {
+						let wrong_chain = Object.assign(Object.create(Object.getPrototypeOf(localChain)), localChain);
+						wrong_chain.chain.pop();
+						resolve_with(resolve, wrong_chain);
+					}));
+				}
+				manual_popup_con.addClass('visible');
+			});
+
+			return popupClosed;
+		}
+
+		// waits 3 secs and compares chains from pool_results to choose a new chain
+		async function poolChain() {
+			showStatus("Frage andere Nodes nach ihren Chains...");
+			let time_out = (someone_in_manual ? 10000 : 3000);
+			setTimeout(async function() {
+				hideStatus();
+				console.log("Vergleiche die Chains von anderen Nodes...");
+				//after 3 sec of receiving pool results from nodes set Timeout and decide for a chain
+				if (pool_results.length > 0) {
+					// Die Chain mit den meisten votes zaehlt
+					let winningCandidate;
+					if (manual_box[0].checked) {
+						winningCandidate= await manualInteraction(pool_results, null, PICK_CHAIN);
+					} else {
+						winningCandidate = pool_results[0];
+						for (let i = 1; i < pool_results.length; i++) {
+							if (pool_results[i].votes > winningCandidate.votes) {
+								winningCandidate = pool_results[i];
+							}
+						}
+						
+					}
+					
+					if (winningCandidate == null) {
+						return;
+					}
+
+
+					localChain = winningCandidate.chain; //Uebernehme die Chain
 					showChain(localChain);
 					checkFiles();
-				//} 
-				showStatus(`Pooling Phase zu ende, habe eine Chain festlegen können. (von ${winningCandidate.nodeid})`, 5000);
-				pool_results = [];
-			} else {
-				showStatus("Pooling Phase zu ende, habe keine Nodes zum austauschen gefunden. Bleibe bei meiner Chain\n\n", 5000);
-			}
-			num_discrete_res = 0;
-			clearInterval(timeout_interval);
-		}, 3000); 	
+					showStatus(`Pooling Phase zu ende, habe eine Chain festlegen können. (von ${winningCandidate.nodeid})`, 5000);
+					
+					pool_results = [];
+				} else {
+					showStatus("Pooling Phase zu ende, habe keine Nodes zum austauschen gefunden. Bleibe bei meiner Chain\n\n", 5000);
+				}
+				num_discrete_res = 0;
+			}, 3000); 	
 	}
 
 	socket.on('doc_added', function(doc, cb) {
@@ -105,35 +199,49 @@ $(document).ready(function(){
 	socket.on('pool_res_ready', function(res) {
 		// Akzeptiert antworten von anderen Nodes (Antwort in res argi)
 		// Ihre Chains werden in pool_results gespeichert und ausgewertet in pool
+		other_node_in_manual = res.someone_in_manual;
+		let node_answer = res.node_chain;
+		if (node_answer.chain.length < 1 ) {
+			return;
+		}
 		num_discrete_res++;
 		showStatus(`Frage andere Nodes nach ihren Chains... (${num_discrete_res} Chains bekommen)`);
-		res.votes = 1;
-		res.lastBlockHash = res.chain[res.chain.length-1].hash;
-		
+		node_answer.votes = 1;
+		node_answer.lastBlockHash = node_answer.chain[node_answer.chain.length-1].hash;
+			
 		// die Fremde Chain zur Instanz der Klasse Blockchain parsen
 		let parsedChain = new Blockchain();
-		parsedChain.fillChainFromArray(res.chain);
-		res.chain = parsedChain;
+		parsedChain.fillChainFromArray(node_answer.chain);
+		node_answer.chain = parsedChain;
 
-		if (!res.chain.checkValid()) {
+		if (!node_answer.chain.checkValid()) {
 			return; // malicious Chain
 		}
 
 		let chainIdx = -1; // index von neuen chain in pool_results (-1 falls noch keiner die geschickt hat)
 		for (let i = 0; i < pool_results.length; i++) {
-			if (pool_results[i].lastBlockHash === res.lastBlockHash) {
+			if (pool_results[i].lastBlockHash === node_answer.lastBlockHash) {
 				chainIdx = i;
 			}
 		}
 
 		if (chainIdx === -1) {
-			pool_results.push(res);
+			pool_results.push(node_answer);
 		} else {
 			pool_results[chainIdx].votes++;
 		}
 	});
-	socket.on('pool', function(pooling_node_id, cb) {
-		cb(packageChain(localChain, myid));
+	socket.on('pool', async function(pooling_node_id, cb) {
+		let chain_to_send;
+		if (manual_box[0].checked) {
+			chain_to_send = await manualInteraction(null, pooling_node_id, SEND_CHAIN);
+			if (chain_to_send == null) {
+				chain_to_send = localChain;
+			}
+		} else {
+			chain_to_send = localChain;
+		}
+		cb(packageChain(chain_to_send, myid));
 	});
 
 
@@ -150,27 +258,53 @@ function packageChain(chain, id) {
 }
 
 class Block {
-    constructor(timestamp, data, creatorid, index, prevHash, hash) {
-	this.timestamp = timestamp;
-	this.data = data;
-	this.creator = creatorid;
-	if (typeof(index) === 'undefined') {
-		this.index = 0;
-		this.prevHash = "0";
-		this.hash = this.calculateHash();
-	} else {
-		this.index = index;
-		this.prevHash = prevHash;
-		this.hash = hash;
+	constructor(timestamp, data, creatorid, index, prevHash, hash) {
+		this.timestamp = timestamp;
+		this.data = data;
+		this.creator = creatorid;
+		if (typeof(index) === 'undefined') {
+			this.index = 0;
+			this.prevHash = "0";
+			this.hash = this.calculateHash();
+		} else {
+			this.index = index;
+			this.prevHash = prevHash;
+			this.hash = hash;
+		}
 	}
-    }
 
-    calculateHash() {
-        return sha256(this.index + this.prevHash + this.timestamp + this.data + this.creator).toString();
-    }
-    prettyTimestamp() {
-	    return new Date(this.timestamp).toTimeString().split(' ')[0];
-    }
+	calculateHash() {
+		return sha256(this.index + this.prevHash + this.data + this.creator).toString();
+	}
+	prettyTimestamp() {
+		return new Date(this.timestamp).toTimeString().split(' ')[0];
+	}
+	asHTML() {
+		var block_el = $('<div></div>', {
+			"class" : "block",
+			"id": this.index
+		});
+		block_el.append(`<span class='timestamp'>${this.prettyTimestamp()}</span>`);
+		block_el.append(`<span class='index'>${this.index}</span>`);
+	
+		var doc_entry_con = $("<li></li>");
+		var doc_entry = $(`<h1>doc_fingerprint:</h1><span>0x${this.data}</span>`);
+		doc_entry_con.append(doc_entry);
+		block_el.append(doc_entry_con);
+		
+		var prevHash_entry_con = $("<li></li>");
+		var prevHash_entry = $(`<h1>prev_hash:</h1><span>${this.prevHash}</span>`);
+		prevHash_entry_con.append(prevHash_entry);
+		block_el.append(prevHash_entry_con);
+
+		var hash_entry_con = $("<li></li>");
+		var hash_entry = $(`<h1>hash:</h1><span>${this.hash}</span>`);
+		hash_entry_con.append(hash_entry);
+		block_el.append(hash_entry_con);
+
+		block_el.append(`<span class="creator">created by <span>${this.creator}</span></span>`);
+		return block_el;
+	}
 }
 class Blockchain{
     constructor(userid) {
@@ -238,32 +372,8 @@ class Blockchain{
 function showChain(chain) { 
 	let block_con = $('#blocks_con');
 	block_con.empty();
-	chain.chain.forEach(function(block) {
-		var block_el = $('<div></div>', {
-			"class" : "block",
-			"id": block.index
-		});
-		block_el.append(`<span class='timestamp'>${block.prettyTimestamp()}</span>`);
-		block_el.append(`<span class='index'>${block.index}</span>`);
-	
-		var doc_entry_con = $("<li></li>");
-		var doc_entry = $(`<h1>doc_fingerprint:</h1><span>0x${block.data}</span>`);
-		doc_entry_con.append(doc_entry);
-		block_el.append(doc_entry_con);
-		
-		var prevHash_entry_con = $("<li></li>");
-		var prevHash_entry = $(`<h1>prev_hash:</h1><span>${block.prevHash}</span>`);
-		prevHash_entry_con.append(prevHash_entry);
-		block_el.append(prevHash_entry_con);
-
-		var hash_entry_con = $("<li></li>");
-		var hash_entry = $(`<h1>hash:</h1><span>${block.hash}</span>`);
-		hash_entry_con.append(hash_entry);
-		block_el.append(hash_entry_con);
-
-		block_el.append(`<span class="creator">created by <span>${block.creator}</span></span>`);
-		
-		block_con.append(block_el);
+	chain.chain.forEach(function(block) {	
+		block_con.append(block.asHTML());
 	});
 }
 
