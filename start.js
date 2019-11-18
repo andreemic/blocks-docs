@@ -4,7 +4,7 @@
  * Module dependencies.
  */
 
-var app = require('../app');
+var app = require('./app');
 var debug = require('debug')('blocks-docs:server');
 var http = require('http');
 /**
@@ -21,7 +21,7 @@ app.set('port', port);
 var server = http.createServer(app);
 
 var io = require('socket.io')(server);
-require('../sockets.js')(io);
+require('./sockets.js')(io);
 /**
  * Listen on provided port, on all network interfaces.
  */
