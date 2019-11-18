@@ -226,9 +226,17 @@ p.three-dots {
 	font-weight:bold;
 }
 
-
+.git-link {
+	position: absolute;
+	right: 50px;
+	top: 10px;
+	opacity: 0.1;
+}
+.git-link:hover {
+	opacity: 1;
+}
 .git-pic { 
-	width: 70px;
+	width: 35px;
 }
 footer {
 	display: flex; 
