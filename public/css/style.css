@@ -225,3 +225,12 @@ p.three-dots {
 .block .creator span {
 	font-weight:bold;
 }
+
+
+.git-pic { 
+	width: 70px;
+}
+footer {
+	display: flex; 
+	justify-content: center; 
+}
