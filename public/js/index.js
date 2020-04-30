@@ -20,7 +20,7 @@ $(document).ready(function(){
 			socket.emit('pool_req');
 			poolChain();
 		});
-		$.get("/get_docs", function(data, status){
+		$.get("/blocks-docs/get_docs", function(data, status){
 			data.files.forEach(showFile); 
 		});
 
